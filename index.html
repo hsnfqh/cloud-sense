@@ -12,6 +12,8 @@
         href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- TF.js model available in ./tfjsmodel/ for future local inference -->
+    <script src="config.js"></script>
     <style>
         * {
             margin: 0;
@@ -987,6 +989,135 @@
             font-size: 1rem;
         }
 
+        .risk-desc {
+            max-height: 2.6em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .btn-detail {
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            color: #fff;
+            border: none;
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 0.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-detail:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+        }
+
+        /* ===== DETAIL MODAL ===== */
+        .detail-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(6px);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .detail-modal-overlay.active {
+            display: flex;
+        }
+
+        .detail-modal {
+            background: linear-gradient(145deg, #f0f7ff, #ffffff);
+            border-radius: 24px;
+            padding: 2rem;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+            animation: modalIn 0.3s ease;
+        }
+
+        @keyframes modalIn {
+            from {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .detail-modal h3 {
+            color: #1a4d7a;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .detail-modal .modal-section {
+            background: rgba(30, 90, 150, 0.06);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .detail-modal .modal-section label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #5a8ab5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-modal .modal-section p {
+            color: #1a4d7a;
+            margin-top: 0.4rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .detail-modal .btn-close-modal {
+            background: #e2e8f0;
+            color: #475569;
+            border: none;
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+
+        .detail-modal .btn-close-modal:hover {
+            background: #cbd5e1;
+        }
+
+        /* ===== GEMINI BADGE ===== */
+        .gemini-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.08);
+            padding: 0.3rem 0.8rem;
+            border-radius: 30px;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            margin-top: 0.8rem;
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 1000px) {
             .main-grid {
@@ -1098,20 +1229,44 @@
                     <span class="kode-awan" id="cloudCode">Cu</span>
                 </div>
                 <div class="confidence-bar">
-                    <div class="confidence-fill" style="width:94%"></div>
+                    <div class="confidence-fill" id="confidenceFill" style="width:94%"></div>
                 </div>
-                <div class="confidence-text"><span>Confidence</span><span>94%</span></div>
+                <div class="confidence-text"><span>Confidence</span><span id="confidenceVal">94%</span></div>
                 <div class="risk-meter">
                     <i class="fas fa-exclamation-triangle"></i><span style="font-weight:700; margin-left:8px;">Analisis
                         Risiko</span>
                     <div class="risk-level" id="riskLevel">Rendah · Cerah</div>
-                    <div class="risk-desc" id="riskDesc">Tidak ada potensi hujan dalam 3-6 jam ke depan</div>
+                    <div class="risk-desc" id="riskDesc">Awan Cumulus menandakan cuaca cerah</div>
+                    <button class="btn-detail" id="btnDetail" style="display:none;" onclick="openDetailModal()"><i
+                            class="fas fa-eye"></i> Lihat Detail</button>
                 </div>
                 <div class="rekom-card">
                     <div><i class="fas fa-clipboard-check"></i> Rekomendasi Aktivitas</div>
-                    <div class="rekom-text" id="rekomText">Waktu tepat untuk aktivitas luar ruangan</div>
-                    <div class="rekom-icons" id="rekomIcons"><i class="fas fa-sun"></i><i
-                            class="fas fa-person-hiking"></i><i class="fas fa-tree"></i></div>
+                    <div class="rekom-text" id="rekomText">Cuaca cerah, cocok untuk aktivitas outdoor!</div>
+                    <div class="rekom-icons" id="rekomIcons"><i class="fas fa-person-hiking"></i><i
+                            class="fas fa-bicycle"></i><i class="fas fa-camera"></i></div>
+                    <div class="gemini-badge" id="geminiBadge" style="display:none;"><i class="fas fa-sparkles"></i>
+                        Powered by Llama AI</div>
+                </div>
+            </div>
+
+            <!-- DETAIL MODAL -->
+            <div class="detail-modal-overlay" id="detailModal" onclick="if(event.target===this)closeDetailModal()">
+                <div class="detail-modal">
+                    <h3><i class="fas fa-robot"></i> Analisis AI</h3>
+                    <div class="modal-section">
+                        <label>Tingkat Risiko</label>
+                        <p id="modalRisk">-</p>
+                    </div>
+                    <div class="modal-section">
+                        <label>Deskripsi Risiko</label>
+                        <p id="modalDesc">-</p>
+                    </div>
+                    <div class="modal-section">
+                        <label>Rekomendasi Aktivitas</label>
+                        <p id="modalRekom">-</p>
+                    </div>
+                    <button class="btn-close-modal" onclick="closeDetailModal()">Tutup</button>
                 </div>
             </div>
         </div>
@@ -1272,24 +1427,108 @@
             shutterBtn.onclick = () => { cameraInput.value = ''; cameraInput.click(); };
             galleryBtn.onclick = () => { galleryInput.value = ''; galleryInput.click(); };
 
+            // ===== GROQ LLM API (Llama 3.3 70B) =====
+            const GROQ_API_KEY = CONFIG.GROQ_API_KEY;
+            let cachedWeatherResults = null;
+
+            // Rate Limiter
+            const rateLimiter = {
+                lastCall: 0,
+                cooldown: 30000,
+                canCall() { return Date.now() - this.lastCall >= this.cooldown; },
+                remaining() { return Math.max(0, Math.ceil((this.cooldown - (Date.now() - this.lastCall)) / 1000)); },
+                mark() { this.lastCall = Date.now(); }
+            };
+
+            // Groq: get recommendation based on cloud type + weather
+            async function getRecommendation(cloudName, cloudCode) {
+                let weatherContext = 'Data cuaca tidak tersedia.';
+                if (cachedWeatherResults && cachedWeatherResults.length > 0) {
+                    weatherContext = cachedWeatherResults.map(w =>
+                        `${w.name}: ${w.temp}°C, ${w.desc}, Kelembapan ${w.humidity}%, Angin ${w.wind} km/h`
+                    ).join('; ');
+                }
+
+                const prompt = `Kamu adalah asisten meteorologi CloudSense. Berikan analisis risiko dan rekomendasi aktivitas berdasarkan data berikut dalam Bahasa Indonesia.
+
+Jenis Awan Terdeteksi: ${cloudName} (${cloudCode})
+Kondisi Cuaca Jabodetabek saat ini: ${weatherContext}
+
+Berikan response dalam format JSON SAJA (tanpa markdown, tanpa backtick) dengan struktur:
+{"riskLevel":"..","riskDesc":"..","recommendation":"..","icons":["fa-icon-1","fa-icon-2","fa-icon-3"]}
+
+Keterangan:
+- riskLevel: tingkat risiko singkat (contoh: "Tinggi · Waspada" atau "Rendah · Cerah")
+- riskDesc: penjelasan risiko 1-2 kalimat berdasarkan jenis awan DAN cuaca saat ini
+- recommendation: rekomendasi aktivitas 1 kalimat
+- icons: 3 nama FontAwesome 6 icon yang relevan (tanpa prefix "fas ")`;
+
+                const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${GROQ_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'llama-3.3-70b-versatile',
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.4,
+                        max_tokens: 400
+                    })
+                });
+
+                if (res.status === 429) throw new Error('RATE_LIMITED');
+                if (!res.ok) throw new Error(`API error ${res.status}`);
+
+                const data = await res.json();
+                let text = data.choices?.[0]?.message?.content || '';
+                text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+                console.log('✅ Groq LLM responded successfully');
+                return JSON.parse(text);
+            }
+
+            // processImage: random classification + LLM recommendation
             function processImage(file) {
                 const reader = new FileReader();
-                reader.onload = (ev) => {
+                reader.onload = async (ev) => {
                     previewImg.src = ev.target.result;
                     previewImg.style.display = 'block';
                     placeholder.style.display = 'none';
 
-                    setTimeout(() => {
-                        const rand = cloudData[Math.floor(Math.random() * cloudData.length)];
-                        document.getElementById('cloudName').innerText = rand.name;
-                        document.getElementById('cloudCode').innerText = rand.code;
-                        document.getElementById('riskLevel').innerText = (rand.code === 'Cb' || rand.code === 'Ns') ? 'Tinggi · Waspada' : 'Rendah';
-                        document.getElementById('riskDesc').innerText = rand.karakter.substring(0, 60) + '…';
-                        document.getElementById('rekomText').innerText = (rand.code === 'Cb') ? 'Hindari outdoor, cek 3D awan' : 'Cocok untuk aktivitas ringan';
-                        const icons = document.getElementById('rekomIcons');
-                        if (rand.code.includes('Cb') || rand.code.includes('Ns')) icons.innerHTML = '<i class="fas fa-cloud-rain"></i><i class="fas fa-bolt"></i><i class="fas fa-house-flood-water"></i>';
-                        else icons.innerHTML = '<i class="fas fa-sun"></i><i class="fas fa-person-hiking"></i><i class="fas fa-tree"></i>';
-                    }, 1000);
+                    // Random classification (original behavior)
+                    const rand = cloudData[Math.floor(Math.random() * cloudData.length)];
+                    const conf = Math.floor(Math.random() * 30) + 70;
+                    document.getElementById('cloudName').textContent = rand.name;
+                    document.getElementById('cloudCode').textContent = rand.code;
+                    document.getElementById('confidenceFill').style.width = conf + '%';
+                    document.getElementById('confidenceVal').textContent = conf + '%';
+
+                    // Try LLM for recommendation
+                    if (rateLimiter.canCall()) {
+                        try {
+                            rateLimiter.mark();
+                            const result = await getRecommendation(rand.name, rand.code);
+                            document.getElementById('riskLevel').textContent = result.riskLevel || 'Rendah · Cerah';
+                            document.getElementById('riskDesc').textContent = result.riskDesc || '';
+                            document.getElementById('rekomText').textContent = result.recommendation || '';
+                            document.getElementById('rekomIcons').innerHTML = (result.icons || []).map(i => `<i class="fas ${i}"></i>`).join('');
+                            document.getElementById('geminiBadge').style.display = 'inline-flex';
+                            document.getElementById('btnDetail').style.display = 'inline-block';
+                            // Store for modal
+                            window._lastLLMResult = result;
+                            console.log('✅ Groq LLM connection successful!', result);
+                        } catch (err) {
+                            console.warn('LLM API error:', err.message);
+                            document.getElementById('riskLevel').textContent = 'Fallback · Lokal';
+                            document.getElementById('riskDesc').textContent = 'LLM API error: ' + err.message;
+                            document.getElementById('geminiBadge').style.display = 'none';
+                            document.getElementById('btnDetail').style.display = 'none';
+                        }
+                    } else {
+                        console.log(`⏳ Rate limited, ${rateLimiter.remaining()}s remaining`);
+                        document.getElementById('riskLevel').textContent = 'Rate Limited';
+                        document.getElementById('riskDesc').textContent = `Tunggu ${rateLimiter.remaining()} detik untuk analisis LLM berikutnya`;
+                    }
                 };
                 reader.readAsDataURL(file);
             }
@@ -1377,6 +1616,7 @@
                 if (syncIcon) syncIcon.className = 'fas fa-sync-alt fa-spin';
                 try {
                     const results = await Promise.all(CITIES.map(fetchCityWeather));
+                    cachedWeatherResults = results; // Cache for Gemini
                     const grid = document.getElementById('citiesGrid');
                     grid.innerHTML = results.map(renderCityCard).join('');
 
@@ -1406,6 +1646,19 @@
             setInterval(fetchAllWeather, 10 * 60 * 1000);
 
         })();
+
+        // Global modal functions (outside IIFE for onclick access)
+        function openDetailModal() {
+            const r = window._lastLLMResult;
+            if (!r) return;
+            document.getElementById('modalRisk').textContent = r.riskLevel || '-';
+            document.getElementById('modalDesc').textContent = r.riskDesc || '-';
+            document.getElementById('modalRekom').textContent = r.recommendation || '-';
+            document.getElementById('detailModal').classList.add('active');
+        }
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.remove('active');
+        }
     </script>
 </body>
 
