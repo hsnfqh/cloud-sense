@@ -12,7 +12,7 @@
         href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- TF.js model available in ./tfjsmodel/ for future local inference -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
     <script src="config.js"></script>
     <style>
         * {
@@ -1378,7 +1378,7 @@
     <!-- SCRIPT -->
     <script>
         (function () {
-            // DATA 10 AWAN
+            // DATA 10 AWAN (frontend display)
             const cloudData = [
                 { code: 'Cu', name: 'Cumulus', icon: 'fa-cloud-sun', karakter: 'Putih menggumpal seperti kapas, dasar datar, puncak menggelembung. Tanda cuaca baik, namun bisa tumbuh vertikal menjadi Cumulonimbus.', base: 'Dasar <2 km' },
                 { code: 'Cc', name: 'Cirrocumulus', icon: 'fa-cloud', karakter: 'Sisik ikan halus di langit, terdiri dari kristal es. Menandakan cuaca stabil, kadang menjadi pertanda perubahan.', base: '>6 km' },
@@ -1391,6 +1391,22 @@
                 { code: 'Ci', name: 'Cirrus', icon: 'fa-feather', karakter: 'Halus seperti bulu, kristal es. Pertanda cuaca cerah, tapi bisa jadi indikator front hangat.', base: '>7 km' },
                 { code: 'Cs', name: 'Cirrostratus', icon: 'fa-circle', karakter: 'Selubung tipis transparan menutupi langit, menciptakan fenomena halo. Pertanda hujan dalam 12-24 jam.', base: '>6 km' }
             ];
+
+            // MODEL: 6-class labels (alphabetical folder order)
+            const MODEL_LABELS = [
+                { name: 'Altocumulus', code: 'Ac' },
+                { name: 'Cirrus', code: 'Ci' },
+                { name: 'Clear Sky', code: 'Cs*' },
+                { name: 'Cumulonimbus', code: 'Cb' },
+                { name: 'Cumulus', code: 'Cu' },
+                { name: 'Stratocumulus', code: 'Sc' }
+            ];
+
+            // Load TF.js graph model
+            let cloudModel = null;
+            tf.loadGraphModel('./model/model.json')
+                .then(m => { tfModel = m; console.log('✅ Model loaded!'); })
+                .catch(e => console.error('❌ Model load failed:', e));
 
             const grid = document.getElementById('cloudGrid');
             cloudData.forEach(c => {
@@ -1559,47 +1575,118 @@ Keterangan:
                 return JSON.parse(text);
             }
 
-            // processImage: random classification + LLM recommendation
-            function processImage(file) {
+            // Preprocess image to tensor [1, 256, 256, 3]
+            // Graph model handles ImageNet normalization internally
+            function imageToTensor(imgElement) {
+                return tf.tidy(() => {
+                    return tf.browser.fromPixels(imgElement)
+                        .resizeBilinear([256, 256])
+                        .toFloat()
+                        .expandDims(0);
+                });
+            }
+
+            const CLASS_NAMES = ['Cumulus', 'Altocumulus', 'Cirrus', 'Clear Sky', 'Stratocumulus', 'Cumulonimbus', 'Mixed'];
+            const CLASS_CODES = ['Cu', 'Ac', 'Ci', 'CS', 'Sc', 'Cb', 'Mx'];
+            const MIXED_IDX = 6;
+
+            async function classifyImage(imgElement) {
+                if (!tfModel) return null;
+                const tensor = tf.browser.fromPixels(imgElement)
+                    .resizeBilinear([256, 256])
+                    .toFloat()
+                    .expandDims(0);
+                const result = tfModel.execute(tensor);
+                let data = Array.from(await result.data());
+                tensor.dispose(); result.dispose();
+
+                // Redistribute Mixed probability ke 6 kelas lain
+                const mixedProb = data[MIXED_IDX];
+                data[MIXED_IDX] = 0;
+                const total = data.reduce((a, b) => a + b, 0);
+                data = data.map(p => p + (p / total) * mixedProb);
+
+                return data;
+            }
+
+            let tfModel = null;
+
+            async function classifyImage(imgElement) {
+                if (!tfModel) return null;
+                const tensor = tf.browser.fromPixels(imgElement)
+                    .resizeBilinear([256, 256])
+                    .toFloat()
+                    .expandDims(0);
+                const probs = tfModel.predict(tensor);
+                const data = await probs.data();
+                tensor.dispose(); probs.dispose();
+                return Array.from(data);
+            }
+
+            // processImage: TF.js model classification + LLM recommendation
+            async function processImage(file) {
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     previewImg.src = ev.target.result;
                     previewImg.style.display = 'block';
                     placeholder.style.display = 'none';
 
-                    // Random classification (original behavior)
-                    const rand = cloudData[Math.floor(Math.random() * cloudData.length)];
-                    const conf = Math.floor(Math.random() * 30) + 70;
-                    document.getElementById('cloudName').textContent = rand.name;
-                    document.getElementById('cloudCode').textContent = rand.code;
+                    const img = new Image();
+                    img.src = ev.target.result;
+                    await new Promise(r => img.onload = r);
+
+                    let name, code, conf;
+                    const probs = await classifyImage(img);
+                    if (probs) {
+                        const topIdx = probs.indexOf(Math.max(...probs));
+                        conf = Math.round(probs[topIdx] * 100);
+                        name = CLASS_NAMES[topIdx];
+                        code = CLASS_CODES[topIdx];
+                    } else {
+                        // Fallback random kalau model belum load
+                        const rand = cloudData[Math.floor(Math.random() * cloudData.length)];
+                        conf = Math.floor(Math.random() * 30) + 70;
+                        name = rand.name;
+                        code = rand.code;
+                    }
+
+                    document.getElementById('cloudName').textContent = name;
+                    document.getElementById('cloudCode').textContent = code;
                     document.getElementById('confidenceFill').style.width = conf + '%';
                     document.getElementById('confidenceVal').textContent = conf + '%';
 
-                    // Try LLM for recommendation
+                    // ── DEBUG (console) ──
+                    console.group('🔍 Model Output');
+                    CLASS_NAMES.slice(0, 6).forEach((n, i) => {
+                        const pct = (probs[i] * 100).toFixed(2);
+                        const bar = '█'.repeat(Math.round(probs[i] * 20));
+                        const isTop = i === probs.indexOf(Math.max(...probs.slice(0, 6)));
+                        console.log(`${isTop ? '▶' : ' '} ${n.padEnd(15)} ${pct}% ${bar}`);
+                    });
+                    console.log(`Sum: ${probs.slice(0, 6).reduce((a, b) => a + b, 0).toFixed(4)}`);
+                    console.groupEnd();
+
                     if (rateLimiter.canCall()) {
                         try {
                             rateLimiter.mark();
-                            const result = await getRecommendation(rand.name, rand.code);
+                            const result = await getRecommendation(name, code);
                             document.getElementById('riskLevel').textContent = result.riskLevel || 'Rendah · Cerah';
                             document.getElementById('riskDesc').textContent = result.riskDesc || '';
                             document.getElementById('rekomText').textContent = result.recommendation || '';
                             document.getElementById('rekomIcons').innerHTML = (result.icons || []).map(i => `<i class="fas ${i}"></i>`).join('');
                             document.getElementById('geminiBadge').style.display = 'inline-flex';
                             document.getElementById('btnDetail').style.display = 'inline-block';
-                            // Store for modal
                             window._lastLLMResult = result;
-                            console.log('✅ Groq LLM connection successful!', result);
                         } catch (err) {
-                            console.warn('LLM API error:', err.message);
+                            console.warn('LLM error:', err.message);
                             document.getElementById('riskLevel').textContent = 'Fallback · Lokal';
                             document.getElementById('riskDesc').textContent = 'LLM API error: ' + err.message;
                             document.getElementById('geminiBadge').style.display = 'none';
                             document.getElementById('btnDetail').style.display = 'none';
                         }
                     } else {
-                        console.log(`⏳ Rate limited, ${rateLimiter.remaining()}s remaining`);
                         document.getElementById('riskLevel').textContent = 'Rate Limited';
-                        document.getElementById('riskDesc').textContent = `Tunggu ${rateLimiter.remaining()} detik untuk analisis LLM berikutnya`;
+                        document.getElementById('riskDesc').textContent = `Tunggu ${rateLimiter.remaining()} detik`;
                     }
                 };
                 reader.readAsDataURL(file);
